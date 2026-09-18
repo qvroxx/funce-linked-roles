@@ -7,7 +7,7 @@ const CLIENT_SECRET = process.env.CLIENT_SECRET;
 const REDIRECT_URI = process.env.REDIRECT_URI;
 const BOT_TOKEN = process.env.BOT_TOKEN;
 
-// 1. Ana Sayfa (Web Sitesi & Discord ile Giriş Butonu)
+// 1. Ana Sayfa
 app.get('/', (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -30,24 +30,21 @@ app.get('/', (req, res) => {
       <div class="card">
         <h1>FunceBot Sistem</h1>
         <p>Hesabınızı doğrulamak ve sisteme erişmek için Discord ile giriş yapın.</p>
-        <a class="btn-discord" href="/api/auth/discord">
-          <svg width="24" height="24" viewBox="0 0 127.14 96.36" fill="currentColor"><path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-.87,56.6.18,80.21A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1,105.25,105.25,0,0,0,32.55-16.14c1.37-27.29-12.02-51.1-19.36-72.15ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,45.92,53.87,53,48.73,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,45.92,96.1,53,91,65.69,84.69,65.69Z"/></svg>
-          Discord ile Giriş Yap
-        </a>
+        <a class="btn-discord" href="/api/auth/discord">Discord ile Giriş Yap</a>
       </div>
     </body>
     </html>
   `);
 });
 
-// 2. Discord Oauth2 Yönlendirmesi (Eksik olan rota buydu)
+// 2. Discord Oauth2 Yönlendirmesi
 app.get('/api/auth/discord', (req, res) => {
   const redirect = encodeURIComponent(REDIRECT_URI);
   const discordAuthUrl = `https://discord.com/oauth2/authorize?client_id=${CLIENT_ID}&response_type=code&redirect_uri=${redirect}&scope=identify+email+role_connections.write`;
   res.redirect(discordAuthUrl);
 });
 
-// 3. Callback (Giriş Sonrası İşlemler ve Kullanıcıyı Siteye Taşıma)
+// 3. Callback (Giriş Sonrası İşlemler)
 app.get('/discord-oauth-callback', async (req, res) => {
   const code = req.query.code;
 
@@ -56,7 +53,7 @@ app.get('/discord-oauth-callback', async (req, res) => {
   }
 
   try {
-    // Access Token Al
+    // Token isteği
     const tokenResponse = await axios.post('https://discord.com/api/v10/oauth2/token', new URLSearchParams({
       client_id: CLIENT_ID,
       client_secret: CLIENT_SECRET,
@@ -69,14 +66,14 @@ app.get('/discord-oauth-callback', async (req, res) => {
 
     const accessToken = tokenResponse.data.access_token;
 
-    // Kullanıcı Bilgisini Çek
+    // Kullanıcı Bilgilerini Çek
     const userResponse = await axios.get('https://discord.com/api/v10/users/@me', {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
 
     const userData = userResponse.data;
 
-    // Bağlantılı Rol Verisini Güncelle
+    // Bağlantılı Rol Verisini Güncelle (Hata verse bile akışı bozmasın)
     try {
       await axios.put(`https://discord.com/api/v10/users/@me/applications/${CLIENT_ID}/role-connections`, {
         platform_name: 'FunceBot Sistem',
@@ -86,16 +83,15 @@ app.get('/discord-oauth-callback', async (req, res) => {
         headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
       });
     } catch (err) {
-      console.log('Rol bağlantısı güncellenirken uyarı:', err.message);
+      console.log('Rol bağlantısı güncellenirken uyarı (devam ediliyor):', err.response?.data || err.message);
     }
 
-    // Kullanıcı giriş yaptığında ana web sitene (GitHub Pages) kullanıcı bilgileriyle geri yönlendir
+    // Başarıyla kendi domainine yönlendir
     res.redirect(`https://funcebot.work.gd/?username=${encodeURIComponent(userData.username)}&avatar=${userData.avatar}&id=${userData.id}`);
 
-
   } catch (error) {
-    console.error('Discord Auth Hatası:', error.response?.data || error.message);
-    res.status(500).send('Giriş yapılırken bir hata oluştu.');
+    console.error('Discord Auth Detaylı Hata:', error.response?.data || error.message);
+    res.status(500).send(`Giriş yapılırken bir hata oluştu: ${JSON.stringify(error.response?.data || error.message)}`);
   }
 });
 
