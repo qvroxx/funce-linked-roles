@@ -1,16 +1,19 @@
 const fetch = require('node-fetch');
 
-// Discord Developer Portal'dan aldığın bilgiler
-const CLIENT_ID = "1534831879918977145";
-const BOT_TOKEN = "MTUzNDgzMTg3OTkxODk3NzE0NQ.GHuYVU.Ub7mM_v5CaDgzxOd3eRLjyYQBvW_BdzE_jPX_o";
+const CLIENT_ID = process.env.CLIENT_ID || "1534831879918977145";
+const BOT_TOKEN = process.env.BOT_TOKEN;
 
-// Discord'da sunucu ayarlarında ve profilinde görünecek bağlı rol tanımı
+if (!BOT_TOKEN) {
+  console.error("❌ Hata: BOT_TOKEN çevre değişkeni bulunamadı!");
+  process.exit(1);
+}
+
 const body = [
   {
     key: 'is_verified',
     name: 'Doğrulanmış Üye',
-    description: 'Funce Bot web sitesinde hesabını doğrulayan kullanıcı',
-    type: 1 // Boolean (Evet/Hayır şeklinde şart kontrolü yapacak)
+    description: 'FunceBot web sitesinde hesabını doğrulayan kullanıcı',
+    type: 1
   }
 ];
 
