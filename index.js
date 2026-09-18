@@ -90,7 +90,8 @@ app.get('/discord-oauth-callback', async (req, res) => {
     }
 
     // Kullanıcı giriş yaptığında ana web sitene (GitHub Pages) kullanıcı bilgileriyle geri yönlendir
-    res.redirect(`https://qvrox.github.io/Roseline/?username=${encodeURIComponent(userData.username)}&avatar=${userData.avatar}&id=${userData.id}`);
+    res.redirect(`https://funcebot.work.gd/?username=${encodeURIComponent(userData.username)}&avatar=${userData.avatar}&id=${userData.id}`);
+
 
   } catch (error) {
     console.error('Discord Auth Hatası:', error.response?.data || error.message);
