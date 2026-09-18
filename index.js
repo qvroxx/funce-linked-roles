@@ -73,7 +73,7 @@ app.get('/discord-oauth-callback', async (req, res) => {
 
     const userData = userResponse.data;
 
-    // Bağlantılı Rol Verisini Güncelle (Hata verse bile akışı bozmasın)
+    // Bağlantılı Rol Verisini Güncelle
     try {
       await axios.put(`https://discord.com/api/v10/users/@me/applications/${CLIENT_ID}/role-connections`, {
         platform_name: 'FunceBot Sistem',
@@ -83,14 +83,20 @@ app.get('/discord-oauth-callback', async (req, res) => {
         headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
       });
     } catch (err) {
-      console.log('Rol bağlantısı güncellenirken uyarı (devam ediliyor):', err.response?.data || err.message);
+      console.log('Rol bağlantısı uyarısı:', err.message);
     }
 
-    // Başarıyla kendi domainine yönlendir
+    // Başarıyla yönlendir
     res.redirect(`https://funcebot.work.gd/?username=${encodeURIComponent(userData.username)}&avatar=${userData.avatar}&id=${userData.id}`);
 
   } catch (error) {
-    console.error('Discord Auth Detaylı Hata:', error.response?.data || error.message);
+    console.error('Discord Auth Hatası:', error.response?.data || error.message);
+    
+    // Eğer kod daha önce kullanıldıysa (invalid_grant) direkt ana siteye yönlendir
+    if (error.response?.data?.error === 'invalid_grant') {
+      return res.redirect('https://funcebot.work.gd/');
+    }
+
     res.status(500).send(`Giriş yapılırken bir hata oluştu: ${JSON.stringify(error.response?.data || error.message)}`);
   }
 });
