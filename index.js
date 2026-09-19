@@ -7,10 +7,13 @@ const CLIENT_SECRET = process.env.CLIENT_SECRET;
 const REDIRECT_URI = process.env.REDIRECT_URI;
 const BOT_TOKEN = process.env.BOT_TOKEN;
 
-// Yetkili ve Admin Tanımlamaları (Founder ID'n sabitlenmiştir)
+// Sabit Kurucu (Founder) ID'si
 const FOUNDER_ID = '1080897669431574609';
 
-// 1. Ana Sayfa
+// Geçici Ban Listesi Belleği
+let bannedUsers = [];
+
+// 1. Ana Sayfa (Karşılama Ekranı)
 app.get('/', (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -18,22 +21,21 @@ app.get('/', (req, res) => {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>FunceBot - Giriş Yap</title>
+      <title>FunceBot - Backend API</title>
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { background-color: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-        .card { background: #1e293b; padding: 2.5rem; border-radius: 1rem; box-shadow: 0 10px 25px rgba(0,0,0,0.5); text-align: center; max-width: 400px; width: 90%; }
+        .card { background: #1e293b; padding: 2.5rem; border-radius: 1rem; box-shadow: 0 10px 25px rgba(0,0,0,0.5); text-align: center; max-width: 450px; width: 90%; border: 1px solid rgba(168, 85, 247, 0.2); }
         h1 { margin-bottom: 1rem; font-size: 1.8rem; color: #38bdf8; }
-        p { margin-bottom: 2rem; color: #94a3b8; font-size: 0.95rem; }
-        .btn-discord { display: inline-flex; align-items: center; justify-content: center; gap: 10px; background-color: #5865F2; color: #fff; text-decoration: none; padding: 0.8rem 1.5rem; border-radius: 0.5rem; font-weight: 600; font-size: 1rem; transition: background 0.2s ease; width: 100%; }
-        .btn-discord:hover { background-color: #4752C4; }
+        p { margin-bottom: 1.5rem; color: #94a3b8; font-size: 0.95rem; line-height: 1.5; }
+        .status { display: inline-block; padding: 6px 14px; background: rgba(34, 197, 94, 0.15); color: #22c55e; border-radius: 20px; font-weight: 600; font-size: 0.85rem; }
       </style>
     </head>
     <body>
       <div class="card">
-        <h1>FunceBot Sistem</h1>
-        <p>Hesabınızı doğrulamak ve sisteme erişmek için Discord ile giriş yapın.</p>
-        <a class="btn-discord" href="/api/auth/discord">Discord ile Giriş Yap</a>
+        <h1>FunceBot Backend</h1>
+        <p>OAuth2 doğrulama ve yönetim paneli servisleri aktif olarak çalışmaktadır.</p>
+        <span class="status">● Sistem Çevrimiçi</span>
       </div>
     </body>
     </html>
@@ -47,7 +49,7 @@ app.get('/api/auth/discord', (req, res) => {
   res.redirect(discordAuthUrl);
 });
 
-// 3. Callback (Giriş Sonrası Rol, Rozet ve Yönlendirme İşlemleri)
+// 3. Callback (Giriş Sonrası Yetki, Ban ve Yönlendirme İşlemleri)
 app.get('/discord-oauth-callback', async (req, res) => {
   const code = req.query.code;
 
@@ -56,7 +58,7 @@ app.get('/discord-oauth-callback', async (req, res) => {
   }
 
   try {
-    // Token isteği
+    // Discord Token İsteği
     const tokenResponse = await axios.post('https://discord.com/api/v10/oauth2/token', new URLSearchParams({
       client_id: CLIENT_ID,
       client_secret: CLIENT_SECRET,
@@ -76,16 +78,21 @@ app.get('/discord-oauth-callback', async (req, res) => {
 
     const userData = userResponse.data;
 
-    // Rol ve Yetki Belirleme
+    // Banlı Kullanıcı Kontrolü
+    if (bannedUsers.includes(userData.id)) {
+      return res.status(403).send('<h1>Erişim Engellendi</h1><p>Bu sistemden kalıcı olarak banlandınız.</p>');
+    }
+
+    // Rol ve Rozet Belirleme
     let role = 'Üye';
-    let badge = '1 Yıllık Kullanıcı'; // Varsayılan rozet
+    let badge = '1 Yıllık Kullanıcı';
 
     if (userData.id === FOUNDER_ID) {
       role = 'Founder';
       badge = 'Kurucu Rozeti';
     }
 
-    // Bağlantılı Rol Verisini Güncelle
+    // Bağlantılı Rol Verisini Güncelle (Hata verse bile akışı bozmaz)
     try {
       await axios.put(`https://discord.com/api/v10/users/@me/applications/${CLIENT_ID}/role-connections`, {
         platform_name: 'FunceBot Sistem',
@@ -98,7 +105,7 @@ app.get('/discord-oauth-callback', async (req, res) => {
       console.log('Rol bağlantısı uyarısı:', err.message);
     }
 
-    // Ön yüze kullanıcı bilgileri, rol ve rozet parametreleriyle yönlendir
+    // Başarıyla ön yüze yönlendir
     res.redirect(`https://funcebot.work.gd/?username=${encodeURIComponent(userData.username)}&avatar=${userData.avatar}&id=${userData.id}&role=${role}&badge=${encodeURIComponent(badge)}`);
 
   } catch (error) {
@@ -112,15 +119,41 @@ app.get('/discord-oauth-callback', async (req, res) => {
   }
 });
 
-// 4. Admin Panel API Rotası (Sadece Founder erişebilir)
-app.get('/api/admin/stats', (req, res) => {
-  // Buraya ileride veritabanı veya anlık kullanıcı istatistikleri eklenecek
+// 4. Admin Panel Veri Getirme Rotası
+app.get('/api/admin/data', (req, res) => {
   res.json({
     status: 'success',
-    message: 'Admin paneline hoş geldin kurucum!',
     totalUsers: 1,
-    activeServers: 50
+    bannedCount: bannedUsers.length,
+    bannedList: bannedUsers
   });
+});
+
+// 5. Kullanıcı Banlama Rotası (Sadece Founder Yetkisiyle)
+app.get('/api/admin/ban', (req, res) => {
+  const { adminId, targetId } = req.query;
+  
+  if (adminId !== FOUNDER_ID) {
+    return res.status(403).json({ error: 'Bu işlem için yetkiniz yok!' });
+  }
+
+  if (targetId && !bannedUsers.includes(targetId)) {
+    bannedUsers.push(targetId);
+  }
+
+  res.json({ success: true, bannedUsers });
+});
+
+// 6. Ban Kaldırma Rotası (Sadece Founder Yetkisiyle)
+app.get('/api/admin/unban', (req, res) => {
+  const { adminId, targetId } = req.query;
+  
+  if (adminId !== FOUNDER_ID) {
+    return res.status(403).json({ error: 'Bu işlem için yetkiniz yok!' });
+  }
+
+  bannedUsers = bannedUsers.filter(id => id !== targetId);
+  res.json({ success: true, bannedUsers });
 });
 
 // Metadata Kayıt Fonksiyonu
