@@ -7,6 +7,9 @@ const CLIENT_SECRET = process.env.CLIENT_SECRET;
 const REDIRECT_URI = process.env.REDIRECT_URI;
 const BOT_TOKEN = process.env.BOT_TOKEN;
 
+// Yetkili ve Admin Tanımlamaları (Founder ID'n sabitlenmiştir)
+const FOUNDER_ID = '1080897669431574609';
+
 // 1. Ana Sayfa
 app.get('/', (req, res) => {
   res.send(`
@@ -44,7 +47,7 @@ app.get('/api/auth/discord', (req, res) => {
   res.redirect(discordAuthUrl);
 });
 
-// 3. Callback (Giriş Sonrası İşlemler)
+// 3. Callback (Giriş Sonrası Rol, Rozet ve Yönlendirme İşlemleri)
 app.get('/discord-oauth-callback', async (req, res) => {
   const code = req.query.code;
 
@@ -73,6 +76,15 @@ app.get('/discord-oauth-callback', async (req, res) => {
 
     const userData = userResponse.data;
 
+    // Rol ve Yetki Belirleme
+    let role = 'Üye';
+    let badge = '1 Yıllık Kullanıcı'; // Varsayılan rozet
+
+    if (userData.id === FOUNDER_ID) {
+      role = 'Founder';
+      badge = 'Kurucu Rozeti';
+    }
+
     // Bağlantılı Rol Verisini Güncelle
     try {
       await axios.put(`https://discord.com/api/v10/users/@me/applications/${CLIENT_ID}/role-connections`, {
@@ -86,19 +98,29 @@ app.get('/discord-oauth-callback', async (req, res) => {
       console.log('Rol bağlantısı uyarısı:', err.message);
     }
 
-    // Başarıyla yönlendir
-    res.redirect(`https://funcebot.work.gd/?username=${encodeURIComponent(userData.username)}&avatar=${userData.avatar}&id=${userData.id}`);
+    // Ön yüze kullanıcı bilgileri, rol ve rozet parametreleriyle yönlendir
+    res.redirect(`https://funcebot.work.gd/?username=${encodeURIComponent(userData.username)}&avatar=${userData.avatar}&id=${userData.id}&role=${role}&badge=${encodeURIComponent(badge)}`);
 
   } catch (error) {
     console.error('Discord Auth Hatası:', error.response?.data || error.message);
     
-    // Eğer kod daha önce kullanıldıysa (invalid_grant) direkt ana siteye yönlendir
     if (error.response?.data?.error === 'invalid_grant') {
       return res.redirect('https://funcebot.work.gd/');
     }
 
     res.status(500).send(`Giriş yapılırken bir hata oluştu: ${JSON.stringify(error.response?.data || error.message)}`);
   }
+});
+
+// 4. Admin Panel API Rotası (Sadece Founder erişebilir)
+app.get('/api/admin/stats', (req, res) => {
+  // Buraya ileride veritabanı veya anlık kullanıcı istatistikleri eklenecek
+  res.json({
+    status: 'success',
+    message: 'Admin paneline hoş geldin kurucum!',
+    totalUsers: 1,
+    activeServers: 50
+  });
 });
 
 // Metadata Kayıt Fonksiyonu
