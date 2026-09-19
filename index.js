@@ -42,14 +42,14 @@ app.get('/', (req, res) => {
   `);
 });
 
-// 2. Discord Oauth2 Yönlendirmesi
+// 2. Discord Oauth2 Yönlendirmesi (guilds izni eklendi)
 app.get('/api/auth/discord', (req, res) => {
   const redirect = encodeURIComponent(REDIRECT_URI);
-  const discordAuthUrl = `https://discord.com/oauth2/authorize?client_id=${CLIENT_ID}&response_type=code&redirect_uri=${redirect}&scope=identify+email+role_connections.write`;
+  const discordAuthUrl = `https://discord.com/oauth2/authorize?client_id=${CLIENT_ID}&response_type=code&redirect_uri=${redirect}&scope=identify+email+guilds+role_connections.write`;
   res.redirect(discordAuthUrl);
 });
 
-// 3. Callback (Giriş Sonrası Yetki, Ban ve Yönlendirme İşlemleri)
+// 3. Callback (Giriş Sonrası Yetki, Ban, Sunucu Çekme ve Yönlendirme İşlemleri)
 app.get('/discord-oauth-callback', async (req, res) => {
   const code = req.query.code;
 
@@ -83,6 +83,22 @@ app.get('/discord-oauth-callback', async (req, res) => {
       return res.status(403).send('<h1>Erişim Engellendi</h1><p>Bu sistemden kalıcı olarak banlandınız.</p>');
     }
 
+    // --- YENİ EKLENEN KISIM: KULLANICININ SUNUCULARINI ÇEKME VE SÜZME ---
+    let userGuilds = [];
+    try {
+      const guildsResponse = await axios.get('https://discord.com/api/v10/users/@me/guilds', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      
+      // Sadece Yönetici (0x8) veya Sunucuyu Yönet (0x20) Yetkisi Olan Sunucuları Filtrele
+      userGuilds = guildsResponse.data.filter(g => 
+        (parseInt(g.permissions) & 0x8) === 0x8 || 
+        (parseInt(g.permissions) & 0x20) === 0x20
+      );
+    } catch (gErr) {
+      console.log('Sunucular çekilirken uyarı:', gErr.message);
+    }
+
     // Rol ve Rozet Belirleme
     let role = 'Üye';
     let badge = '1 Yıllık Kullanıcı';
@@ -105,8 +121,11 @@ app.get('/discord-oauth-callback', async (req, res) => {
       console.log('Rol bağlantısı uyarısı:', err.message);
     }
 
-    // Başarıyla ön yüze yönlendir
-    res.redirect(`https://funcebot.work.gd/?username=${encodeURIComponent(userData.username)}&avatar=${userData.avatar}&id=${userData.id}&role=${role}&badge=${encodeURIComponent(badge)}`);
+    // Sunucuları JSON String Olarak URL İçi Encode Et
+    const encodedGuilds = encodeURIComponent(JSON.stringify(userGuilds));
+
+    // Başarıyla ön yüze yönlendir (guilds parametresi eklendi)
+    res.redirect(`https://funcebot.work.gd/?username=${encodeURIComponent(userData.username)}&avatar=${userData.avatar}&id=${userData.id}&role=${role}&badge=${encodeURIComponent(badge)}&guilds=${encodedGuilds}`);
 
   } catch (error) {
     console.error('Discord Auth Hatası:', error.response?.data || error.message);
@@ -166,7 +185,7 @@ async function registerMetadata() {
     });
     console.log('✅ Metadata hazır.');
   } catch (err) {
-    console.error('Metadata hatası:', err.response?.data || err.message);
+    console.error('Metadata hatası:', err.response?.data || error.message);
   }
 }
 
